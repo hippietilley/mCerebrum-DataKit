@@ -29,15 +29,27 @@ package org.md2k.datakit;
 
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.MenuItem;
 
+import org.md2k.datakit.cerebralcortex.config.Config;
+import org.md2k.datakit.cerebralcortex.config.ConfigManager;
+import org.md2k.datakit.configuration.Configuration;
+import org.md2k.datakit.configuration.ConfigurationManager;
 import org.md2k.datakitapi.messagehandler.ResultCallback;
+import org.md2k.mcerebrum.core.access.serverinfo.ServerCP;
 import org.md2k.utilities.permission.PermissionInfo;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public class ActivitySettingsUpload extends AppCompatActivity {
 
     /** Constant used for logging. <p>Uses <code>class.getSimpleName()</code>.</p> */
     private static final String TAG = ActivitySettingsUpload.class.getSimpleName();
+
+    Configuration configuration;
+    Config config;
 
     /**
      * Upon creation, this activity creates a new <code>PermissionInfo</code> object to fetch permissions.
@@ -47,6 +59,15 @@ public class ActivitySettingsUpload extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configuration = ConfigurationManager.getInstance(this).configuration;
+        try {
+            config = ConfigManager.readConfig();
+            config.setUrl(ServerCP.getServerAddress(this));
+            ConfigManager.write(config);
+            Log.d(TAG, "Upload server config updated from ServerCP.");
+        } catch (IOException e) {
+            Log.d(TAG, "Config file not found. Could not update upload url on creation.");
+        }
         setContentView(R.layout.activity_settings_upload);
         new PermissionInfo().getPermissions(this, new ResultCallback<Boolean>() {
 

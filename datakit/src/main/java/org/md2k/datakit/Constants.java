@@ -38,17 +38,17 @@ public class Constants {
      * Directory for the configuration file.
      *
      * <p>
-     *   The configuration file should be found in <code>"/mCerebrum/org.md2k.datakit/"</code> by default.
+     * The configuration file should be found in <code>"/mCerebrum/org.md2k.datakit/"</code> by default.
      * </p>
      */
-    public static final String CONFIG_DIRECTORY= Environment.getExternalStorageDirectory()
-                                                            .getAbsolutePath() + "/mCerebrum/org.md2k.datakit/";
+    public static final String CONFIG_DIRECTORY = Environment.getExternalStorageDirectory()
+            .getAbsolutePath() + "/mCerebrum/org.md2k.datakit/";
 
     /**
      * Name of the configuration file.
      *
      * <p>
-     *   The configuration file is named <code>"config.json"</code> by default.
+     * The configuration file is named <code>"config.json"</code> by default.
      * </p>
      */
     public static final String CONFIG_FILENAME = "config.json";
@@ -57,25 +57,25 @@ public class Constants {
      * Filename of the database.
      *
      * <p>
-     *   The filename for the database is <code>"database.db"</code> by default.
+     * The filename for the database is <code>"database.db"</code> by default.
      * </p>
      */
-    public static final String DATABASE_FILENAME="database.db";
+    public static final String DATABASE_FILENAME = "database.db";
 
     /**
      * Archive directory.
      *
      * <p>
-     *   The default directory for archives is <code>"cerebralcortex/"</code>.
+     * The default directory for archives is <code>"cerebralcortex/"</code>.
      * </p>
      */
-    public static final String ARCHIVE_DIRECTORY="cerebralcortex/";
+    public static final String ARCHIVE_DIRECTORY = "cerebralcortex/";
 
     /**
      * Directory for raw data.
      *
      * <p>
-     *   The default raw data directory is <code>"raw/"</code>.
+     * The default raw data directory is <code>"raw/"</code>.
      * </p>
      */
     public static final String RAW_DIRECTORY = "raw/";
@@ -84,7 +84,7 @@ public class Constants {
      * Name of this service.
      *
      * <p>
-     *   The name of this service is <code>"org.md2k.datakit.ServiceDataKit"</code> by default.
+     * The name of this service is <code>"org.md2k.datakit.ServiceDataKit"</code> by default.
      * </p>
      */
     public static String SERVICE_NAME = "org.md2k.datakit.ServiceDataKit";

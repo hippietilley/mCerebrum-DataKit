@@ -30,8 +30,10 @@ package org.md2k.datakit.cerebralcortex;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
+import android.provider.MediaStore;
 import android.support.v4.content.LocalBroadcastManager;
 
+import com.blankj.utilcode.util.FileUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -50,11 +52,14 @@ import org.md2k.mcerebrum.system.cerebralcortexwebapi.interfaces.CerebralCortexW
 import org.md2k.mcerebrum.system.cerebralcortexwebapi.metadata.MetadataBuilder;
 import org.md2k.mcerebrum.system.cerebralcortexwebapi.models.AuthResponse;
 import org.md2k.mcerebrum.system.cerebralcortexwebapi.models.stream.DataStream;
+import org.md2k.mcerebrum.system.cerebralcortexwebapi.models.stream.UploadMetadata;
 import org.md2k.mcerebrum.system.cerebralcortexwebapi.utils.ApiUtils;
 import org.md2k.utilities.FileManager;
 import org.md2k.utilities.Report.Log;
 
 import java.io.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Time;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -195,7 +200,7 @@ public class CerebralCortexWrapper extends Thread {
                         dsc.getDs_id() + "-" + randomUUID().toString() + ".msgpack";
                 File outputfile = new File(outputTempFile);
 
-                if (canUpload) {
+                 if (canUpload) {
                     try {
                         MessagePacker packer = MessagePack.newDefaultPacker(new FileOutputStream(outputfile));
 
@@ -207,15 +212,18 @@ public class CerebralCortexWrapper extends Thread {
 
                         for (RowObject row : objects) {  // checks if datatype is an array
                             // Pack data
-                            packer.packArrayHeader(datalength + 1);
+                            packer.packArrayHeader(datalength + 2);
                             packer.packLong(row.data.getDateTime() * 1000);
+                            packer.packLong((row.data.getDateTime() + row.data.getOffset()) * 1000);
                             packData(packer, row.data);
                         }
                         packer.close();
                         File zippedmsgpack = msgpackZipper(outputfile);
 
                         messenger("Offloading data: " + dsc.getDs_id() + "(Remaining: " + count + ")");
-                        Boolean resultUpload = ccWebAPICalls.putArchiveDataAndMetadata(ar.getAccessToken(), dsMetadata, outputTempFile);
+                        UploadMetadata upMetadata = checksumGen(zippedmsgpack);
+                        Boolean resultUpload = ccWebAPICalls.putArchiveDataAndMetadata(ar.getAccessToken(), dsMetadata, zippedmsgpack.getPath(), upMetadata);
+                        Log.d(TAG, "result of upload " + resultUpload);
                         if (resultUpload) {
                             dbLogger.setSyncedBit(dsc.getDs_id(), objects.get(objects.size() - 1).rowKey);
 
@@ -224,7 +232,7 @@ public class CerebralCortexWrapper extends Thread {
                             return;
                         }
                         // delete the temporary file here
-                        zippedmsgpack.delete();
+                        //zippedmsgpack.delete();
 
                     } catch (IOException e) {
                         Log.e("CerebralCortex", "MessagePack creation failed" + e);
@@ -246,6 +254,32 @@ public class CerebralCortexWrapper extends Thread {
     }
 
     /**
+     * Generates a checksum for the given file.
+     * @param uploadFile File to generate a checksum for.
+     * @return The generated checksum.
+     */
+    private UploadMetadata checksumGen(File uploadFile) {
+        MessageDigest md;
+        UploadMetadata upMetadata;
+        try {
+            byte[] byteStream = new byte[(int) uploadFile.length()];
+            BufferedInputStream buf = new BufferedInputStream(new FileInputStream(uploadFile));
+            buf.read(byteStream, 0, byteStream.length);
+            buf.close();
+
+            md = MessageDigest.getInstance("SHA-256");
+            md.update(byteStream);
+            byte[] digest = md.digest();
+
+            upMetadata = new UploadMetadata(String.format("%064x", new java.math.BigInteger(1, digest)));
+            return upMetadata;
+        } catch (NoSuchAlgorithmException | IOException ignored) {
+        }
+        upMetadata = new UploadMetadata();
+        return upMetadata;
+    }
+
+    /**
      * Constructs an ArrayList of headers from the name field of the <code>DataDescriptor</code>.
      *
      * @param dsMetadata Metadata of the datastream.
@@ -256,11 +290,13 @@ public class CerebralCortexWrapper extends Thread {
         List<HashMap<String, String>> dataDescList = dsMetadata.getDataDescriptor();
         ArrayList<String> headers = new ArrayList<>();
         headers.add("Timestamp");
+        headers.add("Localtime");
         for (HashMap<String, String> dataDescriptor : dataDescList) {
             Log.e("MessagePack", "Generating headers...");
             if (dataDescriptor.containsKey("NAME")) {
                 if (dataDescriptor.get("NAME").isEmpty()) {
                     FL.w(TAG, "DataDescriptor has no name.");
+                    Log.w(TAG, "DataDescriptor has no name.");
                     canUpload = false;
                 } else {
                     headers.add(dataDescriptor.get("NAME"));
@@ -268,6 +304,7 @@ public class CerebralCortexWrapper extends Thread {
             } else if (dataDescriptor.containsKey("name")) {
                 if (dataDescriptor.get("name").isEmpty()) {
                     FL.w(TAG, "DataDescriptor has no name.");
+                    Log.w(TAG, "DataDescriptor has no name.");
                     canUpload = false;
                 } else {
                     headers.add(dataDescriptor.get("name"));
@@ -275,12 +312,14 @@ public class CerebralCortexWrapper extends Thread {
             } else if (dataDescriptor.containsKey("Name")) {
                 if (dataDescriptor.get("Name").isEmpty()) {
                     FL.w(TAG, "DataDescriptor has no name.");
+                    Log.w(TAG, "DataDescriptor has no name.");
                     canUpload = false;
                 } else {
                     headers.add(dataDescriptor.get("Name"));
                 }
             } else if (dataDescList.size() <= 0) {
                 FL.e(TAG, "DataDescriptor not properly defined. This datastream (" + dsMetadata.getName() + ") will not be uploaded. Ds_id: " + dsc.getDs_id());
+                Log.e(TAG, "DataDescriptor not properly defined. This datastream (" + dsMetadata.getName() + ") will not be uploaded. Ds_id: " + dsc.getDs_id());
                 canUpload = false;
             }
         }
@@ -323,8 +362,9 @@ public class CerebralCortexWrapper extends Thread {
         } else if (objects.get(0).data instanceof DataTypeStringArray) {
             datalength = ((DataTypeStringArray) objects.get(0).data).getSample().length;
         }
-        if (datalength != headers.size() - 1) { // -1 because of "Timestamp"
+        if (datalength != headers.size() - 2) { // -1 because of "Timestamp"
             FL.e(TAG, "DataDescriptor not properly defined. This datastream (" + dsMetadata.getName() + ") will not be uploaded. Ds_id: " + dsc.getDs_id());
+            Log.e(TAG, "DataDescriptor not properly defined. This datastream (" + dsMetadata.getName() + ") will not be uploaded. Ds_id: " + dsc.getDs_id());
             canUpload = false;
         }
         return datalength;
@@ -551,7 +591,7 @@ public class CerebralCortexWrapper extends Thread {
              */
             @Override
             public boolean accept(File dir, String filename) {
-                if (filename.contains("_archive") || filename.contains("_corrupt"))
+                if (filename.contains("_archive") || filename.contains("_corrupt") || filename.contains(".gz") || filename.contains(".msgpack"))
                     return false;
                 return true;
             }
@@ -559,6 +599,7 @@ public class CerebralCortexWrapper extends Thread {
 
         File[] files = directory.listFiles(ff);
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHH");
+        File zippedOutput;
 
         if (files != null) {
             Arrays.sort(files);
@@ -572,7 +613,6 @@ public class CerebralCortexWrapper extends Thread {
                     File outputfile = new File(file.getAbsolutePath() + ".msgpack");
                     Log.d("HFUpload", "Generating headers");
                     ArrayList<String> headers = generateHeaders(dsMetadata, dsc);
-                    headers.add(1, "Localtime");
 
                     try {
                         BufferedReader lineReader = new BufferedReader(new FileReader(file));
@@ -594,21 +634,34 @@ public class CerebralCortexWrapper extends Thread {
                                 } else {
                                     rawPacker.packArrayHeader(lineArray.length);
                                     int i = 0;
-                                    for (String datapoint : lineArray) {
-                                        if (i < 2) {
-                                            if (i == 0)
-                                                rawPacker.packLong(Long.parseLong(datapoint) * 1000);
-                                            rawPacker.packLong(Long.parseLong(datapoint) + Long.parseLong(lineArray[i - 1]) * 1000);
-                                        } else
-                                            rawPacker.packDouble(Double.parseDouble(datapoint));
-                                        i++;
+                                    try {
+                                        for (String datapoint : lineArray) {
+                                            if (i < 2) {
+                                                if (i == 0) {
+                                                    rawPacker.packLong(Long.parseLong(datapoint) * 1000);
+                                                } else {
+                                                    rawPacker.packLong(Long.parseLong(datapoint) + Long.parseLong(lineArray[i - 1]) * 1000);
+                                                }
+                                            } else
+                                                rawPacker.packDouble(Double.parseDouble(datapoint));
+                                            i++;
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Line in raw data file missing or corrupt. Line skipped.");
+                                        Log.e(TAG, e.getMessage() + " " + e.getCause());
                                     }
                                 }
                             }
                             rawPacker.close();
-                            msgpackZipper(outputfile);
+                            zippedOutput = msgpackZipper(outputfile);
                         } else {
                             Log.e(TAG, "DataDescriptor not properly defined. This datastream (" + dsMetadata.getName() + ") will not be uploaded. Ds_id: " + dsc.getDs_id());
+                            String headerstring = "";
+                            for (String header: headers) {
+                                headerstring += header;
+                            }
+                            Log.e(TAG, "Headers: " + headerstring);
+
                             break;
                         }
 
@@ -617,10 +670,12 @@ public class CerebralCortexWrapper extends Thread {
                         e.printStackTrace();
                         return;
                     }
-                    Boolean resultUpload = ccWebAPICalls.putArchiveDataAndMetadata(ar.getAccessToken(), dsMetadata, file.getAbsolutePath());
+                    UploadMetadata upMetadata = checksumGen(file);
+                    Boolean resultUpload = ccWebAPICalls.putArchiveDataAndMetadata(ar.getAccessToken(), dsMetadata, zippedOutput.getAbsolutePath(), upMetadata);
+                    zippedOutput.delete();
                     if (resultUpload) {
                         File newFile = new File(file.getAbsolutePath());
-                        newFile.delete();
+                         newFile.delete();
                     } else {
                         Log.e(TAG, "Error uploading file: " + file.getName());
                         return;
